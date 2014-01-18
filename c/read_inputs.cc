@@ -18,23 +18,28 @@ void die(const char* file, int line, const char* msg) {
 #define DIE() die(__FILE__, __LINE__)
 #define CHECK(cond) do { if (!(cond)) DIE_WITH_MSG(#cond); } while (0)
 
+template <typename T>
+inline T max(const T& a, const T& b) {
+  return (a > b) ? a : b;
+}
+
 struct Input {
   dirent* ent;
-  //FILE* file;
   int fd;
 };
 
-const int MAX_INPUTS = 100;
-static Input inputs[MAX_INPUTS];
-static int numInputs = 0;
-fd_set fds;
-
 int main() {
+  const int MAX_INPUTS = 100;
+  Input inputs[MAX_INPUTS];
+  int num_inputs = 0;
+  fd_set fds;
   FD_ZERO(&fds);
+  int max_fd = -1;
+
   DIR* dir = opendir("/dev/input");
   CHECK(dir);
   while (struct dirent* ent = readdir(dir)) {
-    Input& e = inputs[numInputs];
+    Input& e = inputs[num_inputs];
     e.ent = ent;
     char buf[PATH_MAX];
     if (ent->d_name[0] == '.') // . and ..
@@ -42,16 +47,10 @@ int main() {
     strcpy(buf, "/dev/input/");
     strcat(buf, ent->d_name);
     printf("opening %s, ", buf);
-//     e.file = fopen(buf, "r");
-//     if (!e.file) {
-//       fprintf(stderr, "cannot open %s, skipping\n", buf);
-//       continue;
-//     }
-//     CHECK(e.file);
-//     e.fd = fileno(e.file);
     e.fd = open(buf, O_RDONLY | O_NONBLOCK);
     CHECK(e.fd != -1);
     printf("fd=%d\n", e.fd);
+    max_fd = max(max_fd, e.fd);
 
     struct stat sb;
     fstat(e.fd, &sb);
@@ -61,21 +60,18 @@ int main() {
     }
 
     FD_SET(e.fd, &fds);
-    CHECK(numInputs++ < MAX_INPUTS);
+    CHECK(++num_inputs < MAX_INPUTS);
   }
 
   while (1) {
     fd_set rfds = fds;
+    int nfds = max_fd + 1;
     int r;
     do {
-      r = select(numInputs, &rfds, 0, 0, 0);
-      if ((r == -1) && (errno == EINTR))
-        printf("wtf?\n");
+      r = select(nfds, &rfds, 0, 0, 0);
     } while ((r == -1) && (errno == EINTR));
-    //(r == -1 && errno == EINTR);
     CHECK(r != -1);
-    printf("select returned\n");
-    for (int i = 0; i < numInputs; ++i) {
+    for (int i = 0; i < num_inputs; ++i) {
       Input& input = inputs[i];
       if (FD_ISSET(input.fd, &rfds)) {
         const int BUF_SIZE = 1024;
@@ -94,6 +90,7 @@ int main() {
             break;
         }
 
+        CHECK(n != 0); // no handled
         printf("%s: read %ld bytes %s\n", input.ent->d_name, n, n == BUF_SIZE ? "(at least)" : "");
       }
     }
