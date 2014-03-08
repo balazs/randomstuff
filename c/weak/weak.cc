@@ -2,7 +2,7 @@
 
 extern "C" {
 
-void weak(int) __attribute__((weak));
+void weak(int) __attribute__((weak, visibility("default")));
 
 void weak(int) {
     printf("lol I'm weak\n");
@@ -10,6 +10,7 @@ void weak(int) {
 
 }
 
+void call_weak(int x) __attribute__((visibility("default")));
 void call_weak(int x) {
   weak(x);
 }
